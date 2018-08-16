@@ -11,8 +11,11 @@ export async function GetGeoInformation(address: string) {
         address: address,
         language: 'HE'
     });
-    return new GeocodeInformation(await (await fetch.default(u.url)).json() as GeocodeResult);
-
+    
+    
+    let r = new GeocodeInformation(await (await fetch.default(u.url)).json() as GeocodeResult);
+    
+    return r;
 
 }
 export class GeocodeInformation {
