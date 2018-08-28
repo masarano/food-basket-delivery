@@ -6,7 +6,7 @@ import { GetGeoInformation } from "../shared/googleApiHelpers";
 import { foreachEntityItem, foreachSync } from "../shared/utils";
 
 import { serverInit } from "./serverInit";
-import * as XLSX from 'xlsx/types';
+import * as XLSX from 'xlsx';
 import { AddBoxAction } from "../asign-family/add-box-action";
 import { Families } from "../families/families";
 
@@ -15,8 +15,7 @@ serverInit();
 export async function DoIt() {
     try {
 
-       let hs = new HelpersAndStats();
-       let cols = hs.__iterateColumns();
+         await ImportFromExcel() ;
     }
     catch (err) {
         console.log(err);
@@ -38,8 +37,8 @@ async function getGeolocationInfo() {
 }
 async function ImportFromExcel() {
 
-    let wb = XLSX.readFile("C:\\Users\\Yoni\\Downloads\\xxx.xlsx");
-    let s = wb.Sheets[wb.SheetNames[1]];
+    let wb = XLSX.readFile("C:\\temp\\Food-basket-delivery.xlsx");
+    let s = wb.Sheets[wb.SheetNames[0]];
     let o = XLSX.utils.sheet_to_json(s);
     let found = true;
     await foreachSync(o, async r => {
@@ -54,7 +53,7 @@ async function ImportFromExcel() {
             f.appartment.value = r["דירה"];
             f.address.value = (get("כתובת") + ' ' + get("מספר").trim() + ' ' + get("עיר"));
             f.familyMembers.value = +r["מס' נפשות"];
-            f.name.value = (get("שם משפחה") + " " + get("שם פרטי")).trim();
+            f.name.value = get("שם").trim();
             if (!f.name.value) {
                 f.name.value = '!ללא שם ';
             }
@@ -64,6 +63,7 @@ async function ImportFromExcel() {
                 await f.doSaveStuff({});
                 await f.save();
             }
+            
             else if (f.address.value == 'טטט')
                 found = true;
         }
