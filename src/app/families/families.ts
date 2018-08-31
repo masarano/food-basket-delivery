@@ -57,6 +57,7 @@ export class Families extends IdEntity<FamilyId> implements entityWithApi {
         this.name.error = 'השם קצר מידי';
     }
   });
+  idInExcel = new StringColumn('מזהה באקסל');
   familyMembers = new NumberColumn('מספר נפשות');
   language = new LanguageColumn();
   basketType = new BasketId('סוג סל');

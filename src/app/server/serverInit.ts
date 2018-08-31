@@ -22,7 +22,7 @@ import { NewsUpdate } from '../news/NewsUpdate';
 import { FamilyDeliveryEventsView } from '../families/FamilyDeliveryEventsView';
 
 
-export var allEntities =()=> [
+export var allEntities = () => [
     new Events(),
     new EventHelpers(),
     new Helpers(),
@@ -91,6 +91,7 @@ export async function serverInit() {
         de.deliveryDate.dateValue = new Date();
         await de.save();
     }
+
 
     let settings = new ApplicationSettings();
     if ((await settings.source.count()) == 0) {

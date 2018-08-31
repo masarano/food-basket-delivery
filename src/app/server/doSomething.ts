@@ -9,6 +9,7 @@ import { serverInit } from "./serverInit";
 import * as XLSX from 'xlsx';
 import { AddBoxAction } from "../asign-family/add-box-action";
 import { Families } from "../families/families";
+import { FamilySources } from "../families/FamilySources";
 
 serverInit();
 
@@ -63,6 +64,18 @@ async function ImportFromExcel() {
                 await f.doSaveStuff({});
                 await f.save();
             }
+           // let nameFromExcel = r["מקור"];
+            
+           // let source = new FamilySources();
+           // let rr = await source.source.find({ where: source.name.isEqualTo(nameFromExcel) });
+           // if (rr.length > 0)
+           //     f.familySource.value = rr[0].id.value;
+           // else {
+           //     source.name.value = nameFromExcel;
+           //     await source.save();
+           //     f.familySource.value = source.id.value;
+           // }
+        
             
             else if (f.address.value == 'טטט')
                 found = true;
