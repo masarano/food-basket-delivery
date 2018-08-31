@@ -16,7 +16,17 @@ serverInit();
 export async function DoIt() {
     try {
 
+<<<<<<< HEAD
          await ImportFromExcel() ;
+=======
+        let f = new Families();
+        let r = await f.source.find({ where: f.iDinExcel.isEqualTo("X") });
+        r.forEach(ff => { 
+            console.log(ff.address.value);
+            let g = ff.getGeocodeInformation();
+            let s = g.ok();
+        });
+>>>>>>> bf4cca381b57b7db77a6ce2e51ffaaf4fe7df5aa
     }
     catch (err) {
         console.log(err);
