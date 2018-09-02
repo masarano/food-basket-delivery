@@ -14,24 +14,20 @@ import { FamilySources } from "../families/FamilySources";
 serverInit();
 
 export async function DoIt() {
-    try {
-
-<<<<<<< HEAD
-         await ImportFromExcel() ;
-=======
-        let f = new Families();
-        let r = await f.source.find({ where: f.iDinExcel.isEqualTo("X") });
-        r.forEach(ff => { 
-            console.log(ff.address.value);
-            let g = ff.getGeocodeInformation();
-            let s = g.ok();
-        });
->>>>>>> bf4cca381b57b7db77a6ce2e51ffaaf4fe7df5aa
-    }
-    catch (err) {
-        console.log(err);
-    }
-
+    //try {
+//
+//        let f = new Families();
+//        let r = await f.source.find({ where: f.iDinExcel.isEqualTo("X") });
+//        r.forEach(ff => { 
+ //           console.log(ff.address.value);
+ //           let g = ff.getGeocodeInformation();
+  //          let s = g.ok();
+  //      });
+  //  }
+  //  catch (err) {
+  //      console.log(err);
+  //  }
+  await ImportFromExcel() ;
 }
 DoIt();
 
@@ -69,23 +65,44 @@ async function ImportFromExcel() {
                 f.name.value = '!ללא שם ';
             }
             f.phone1.value = r["טלפון"];
-            f.addressComment.value = r["הערות"];
-            if (found) {
-                await f.doSaveStuff({});
-                await f.save();
-            }
-           // let nameFromExcel = r["מקור"];
+            f.phone2.value = r["טלפון2"];
+            f.idInExcel.value = r["מספר סידורי"];
             
-           // let source = new FamilySources();
-           // let rr = await source.source.find({ where: source.name.isEqualTo(nameFromExcel) });
-           // if (rr.length > 0)
-           //     f.familySource.value = rr[0].id.value;
-           // else {
-           //     source.name.value = nameFromExcel;
-           //     await source.save();
-           //     f.familySource.value = source.id.value;
-           // }
-        
+            if (r["מס' נפשות"] == 2)
+                f.basketType.value= "fc77209c-0fdb-4bf0-bc27-52ea5fe4f4c2"
+            if (r["מס' נפשות"] == 3)
+                f.basketType.value= "d4aa7ffc-6537-4644-8ddd-0adfe7c4a51e"
+            if (r["מס' נפשות"] > 3 && r["מס' נפשות"] <= 6)
+                f.basketType.value= "6b707360-94bf-491f-a14b-cef5d2d9941d"
+            if (r["מס' נפשות"] > 6)
+                f.basketType.value= "80595d5c-9d0c-44c2-b751-775862a6751e"  
+
+
+            f.addressComment.value = r["הערות"];
+    
+            let nameFromExcel = r["מקור"];
+    
+            if (nameFromExcel.value == "empty")
+            {}
+            else
+            {
+                let source = new FamilySources();
+                let rr = await source.source.find({ where: source.name.isEqualTo(nameFromExcel) });
+                if (rr.length > 0)
+                { 
+                    f.familySource.value = rr[0].id.value;
+                }
+                else {
+                    source.name.value = nameFromExcel;
+                    await source.save();
+                    f.familySource.value = source.id.value;
+                    }
+            }
+                          
+                if (found) {
+                    await f.doSaveStuff({});
+                    await f.save();
+                }
             
             else if (f.address.value == 'טטט')
                 found = true;
