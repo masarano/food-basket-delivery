@@ -40,7 +40,7 @@ export class UpdateFamilyComponent implements OnInit {
           dropDown: { source: new FamilySources() }
         },
         families.internalComment,
-        families.iDinExcel,
+        families.idInExcel,
         families.deliveryComments,
         families.special.getColumn(),
         families.createUser,
