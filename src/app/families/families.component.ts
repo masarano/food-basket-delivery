@@ -8,7 +8,7 @@ import { YesNo } from "./YesNo";
 import { Language } from "./Language";
 import { FamilySources } from "./FamilySources";
 import { BasketType } from "./BasketType";
-import { SelectService } from '../select-popup/select-service';
+import { DialogService } from '../select-popup/dialog';
 import { GeocodeInformation, GetGeoInformation } from '../shared/googleApiHelpers';
 
 import { DomSanitizer } from '@angular/platform-browser';
@@ -25,6 +25,7 @@ import { HasAsyncGetTheValue } from '../model-shared/types';
 import { Helpers } from '../helpers/helpers';
 import { Route } from '@angular/router';
 import { AdminGuard } from '../auth/auth-guard';
+import { SelectService } from '../select-popup/select-service';
 
 @Component({
   selector: 'app-families',
@@ -133,7 +134,7 @@ export class FamiliesComponent implements OnInit {
     return;
   }
   familyDeliveryEventsView = new FamilyDeliveryEventsView();
-  previousDeliveryEvents: FamilyDeliveryEventsView[] = [];
+
   families = new GridSettings(new Families(), {
 
     allowUpdate: true,
@@ -150,7 +151,7 @@ export class FamiliesComponent implements OnInit {
           return '';
       }
     },
-    numOfColumnsInGrid: 5,
+    numOfColumnsInGrid: 4,
     onEnterRow: async f => {
       if (f.isNew()) {
         f.basketType.value = '';
@@ -160,8 +161,7 @@ export class FamiliesComponent implements OnInit {
         f.special.listValue = YesNo.No;
       } else {
 
-        await this.busy.donotWait(async () =>
-          this.previousDeliveryEvents = await this.familyDeliveryEventsView.source.find({ where: this.familyDeliveryEventsView.family.isEqualTo(f.id), orderBy: [{ column: this.familyDeliveryEventsView.deliveryDate, descending: true }] }));
+
       }
     },
 
@@ -196,33 +196,42 @@ export class FamiliesComponent implements OnInit {
     },
     hideDataArea: true,
     knowTotalRows: true,
+    allowDelete: true,
+
+    confirmDelete: (h, yes) => this.dialog.confirmDelete('משפחת '+h.name.value, yes),
     columnSettings: families => [
 
       {
         column: families.name,
-        width: '150'
-      },
-
-      {
-        column: families.familyMembers,
-        width: '50'
+        width: '200'
       },
       {
-        column: families.language,
-        dropDown: {
-          items: families.language.getOptions()
-        },
-        width: '100'
+        column: families.address,
+        cssClass: f => {
+          if (f.getGeocodeInformation().partialMatch())
+            return 'addressProblem';
+          return '';
+        }
       },
       {
         column: families.basketType,
         dropDown: { source: new BasketType() },
         width: '100'
       },
-
       {
         caption: 'שינוע',
-        getValue: f => f.getDeliveryDescription()
+        getValue: f => f.getDeliveryDescription(),
+        width: '200'
+      }, {
+        column: families.familyMembers,
+
+      },
+      {
+        column: families.language,
+        dropDown: {
+          items: families.language.getOptions()
+        },
+
       }, {
         column: families.familySource,
         dropDown: { source: new FamilySources() }
@@ -233,14 +242,7 @@ export class FamiliesComponent implements OnInit {
       families.special.getColumn(),
       families.createUser,
       families.createDate,
-      {
-        column: families.address,
-        cssClass: f => {
-          if (f.getGeocodeInformation().partialMatch())
-            return 'addressProblem';
-          return '';
-        }
-      },
+
       families.floor,
       families.appartment,
       families.addressComment,
@@ -250,7 +252,7 @@ export class FamiliesComponent implements OnInit {
       families.phone1Description,
       families.phone2,
       families.phone2Description,
-      families.courier.getColumn(this.dialog),
+      families.courier.getColumn(this.selectService),
       {
         caption: 'טלפון משנע',
         getValue: f => f.lookup(new Helpers(), f.courier).phone.value
@@ -347,7 +349,7 @@ export class FamiliesComponent implements OnInit {
   })
   deliverInfo = this.families.addArea({
     columnSettings: families => [
-      families.courier.getColumn(this.dialog),
+      families.courier.getColumn(this.selectService),
       {
         caption: 'טלפון משנע',
         getValue: f => f.lookup(new Helpers(), f.courier).phone.value
@@ -361,7 +363,7 @@ export class FamiliesComponent implements OnInit {
     ]
   });
   gridView = true;
-  constructor(private dialog: SelectService, private san: DomSanitizer, public busy: BusyService) {
+  constructor(private dialog: DialogService, private selectService: SelectService, private san: DomSanitizer, public busy: BusyService) {
 
     let y = dialog.newsUpdate.subscribe(() => {
       this.refreshStats();
@@ -483,6 +485,9 @@ export class FamiliesComponent implements OnInit {
   }
 
   [reuseComponentOnNavigationAndCallMeWhenNavigatingToIt]() {
+    this.refresh();
+  }
+  refresh() {
     this.families.getRecords();
     this.refreshStats();
   }
