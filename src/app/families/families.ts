@@ -129,7 +129,24 @@ export class Families extends IdEntity<FamilyId> implements entityWithApi {
         let duration = '';
         if (this.courierAssingTime.value && this.deliveryStatusDate.value)
           duration = ' תוך ' + Math.round((this.deliveryStatusDate.dateValue.valueOf() - this.courierAssingTime.dateValue.valueOf()) / 60000) + " דק'";
-        return this.deliverStatus.displayValue + ' על ידי ' + this.courier.getValue() + ' ' + this.deliveryStatusDate.relativeDateName() + duration;
+        return this.deliverStatus.displayValue + (this.courierComments.value ? ", " + this.courierComments.value + " - " : '') + (this.courier.value ? ' על ידי ' + this.courier.getValue() : '') + ' ' + this.deliveryStatusDate.relativeDateName() + duration;
+
+    }
+    return this.deliverStatus.displayValue;
+  }
+  getShortDeliveryDescription() {
+    switch (this.deliverStatus.listValue) {
+      case DeliveryStatus.ReadyForDelivery:
+        if (this.courier.value) {
+          return this.courier.getValue() + ' יצא ' + this.courierAssingTime.relativeDateName();
+        }
+        break;
+      case DeliveryStatus.Success:
+      case DeliveryStatus.FailedBadAddress:
+      case DeliveryStatus.FailedNotHome:
+      case DeliveryStatus.FailedOther:
+        
+        return this.deliverStatus.displayValue ;
 
     }
     return this.deliverStatus.displayValue;
@@ -212,7 +229,7 @@ export class Families extends IdEntity<FamilyId> implements entityWithApi {
             let duration = '';
             if (n.courierAssingTime.value && n.deliveryStatusDate.value)
               duration = ' תוך ' + Math.round((n.deliveryStatusDate.dateValue.valueOf() - n.courierAssingTime.dateValue.valueOf()) / 60000) + " דק'";
-            return n.deliverStatus.displayValue + ' למשפחת ' + n.name.value + ' על ידי ' + courierName + duration;
+            return n.deliverStatus.displayValue + (n.courierComments.value ? ", " + n.courierComments.value + " - " : '') + ' למשפחת ' + n.name.value + ' על ידי ' + courierName + duration;
         }
         return 'משפחת ' + n.name.value + ' עודכנה ל' + n.deliverStatus.displayValue;
       case 2:
@@ -239,5 +256,6 @@ export interface FamilyUpdateInfo {
   courier: HelperId,
   deliverStatus: DeliveryStatusColumn,
   courierAssingTime: changeDate,
-  deliveryStatusDate: changeDate
+  deliveryStatusDate: changeDate,
+  courierComments: StringColumn
 } 
