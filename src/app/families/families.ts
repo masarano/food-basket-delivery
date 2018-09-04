@@ -30,9 +30,10 @@ export class Families extends IdEntity<FamilyId> implements entityWithApi {
               return f.__iterateColumns().filter(c => c != f.courierComments && c != f.deliverStatus);
             }
           },
-          excludeColumns: f => {
-            return f.excludeColumns(authInfo);
-          },
+          //הסרתי כדי להציג במסך משלח
+          //excludeColumns: f => {
+          //  return f.excludeColumns(authInfo);
+          //},
           onSavingRow: async family => {
             await family.doSaveStuff(authInfo);
           },
