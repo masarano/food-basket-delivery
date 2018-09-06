@@ -109,8 +109,8 @@
   <ul>
     <li *ngFor="let b of familyLists.totals">{{b.name()}} - {{b.count}}</li>
   </ul>
-  <div class="help">
-      בסיום החלוקה, אם נשארו לך ארגזים מיותרים, התקשר ל{{familyLists.toDeliver[0].courierAssignUserName.value}} {{familyLists.toDeliver[0].courierAssignUserPhone.displayValue}}
+  <div class="help" *ngIf="familyLists.allFamilies.length>0">
+     בסיום החלוקה, אם נשארו לך ארגזים מיותרים, התקשר ל{{familyLists.allFamilies[0].courierAssignUserName.value}} {{familyLists.allFamilies[0].courierAssignUserPhone.displayValue}}
   </div>
 </div>
 
