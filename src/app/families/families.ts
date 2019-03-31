@@ -4,51 +4,76 @@ import { YesNoColumn } from "./YesNo";
 import { LanguageColumn } from "./Language";
 import { FamilySourceId } from "./FamilySources";
 import { BasketId } from "./BasketType";
-import { IdEntity, Id, changeDate, DateTimeColumn } from "../model-shared/types";
-import { StringColumn, NumberColumn, ColumnSetting, Column } from "radweb";
-import { DataProviderFactory } from "radweb/utils/dataInterfaces1";
+import { NumberColumn, StringColumn, IdEntity, Id, changeDate, DateTimeColumn, SqlBuilder, BoolColumn, PhoneColumn } from "../model-shared/types";
+import { ColumnSetting, Column } from "radweb";
 import { HelperIdReadonly, HelperId, Helpers } from "../helpers/helpers";
 import { myAuthInfo } from "../auth/my-auth-info";
 import { GeocodeInformation, GetGeoInformation } from "../shared/googleApiHelpers";
-import { evilStatics } from "../auth/evil-statics";
-import { entityWithApi, entityApiSettings, ApiAccess } from "../server/api-interfaces";
-import { DataApiSettings } from "radweb/utils/server/DataApi";
+import { Context, EntityClass } from "../shared/context";
+import { DeliveryEvents } from "../delivery-events/delivery-events";
+import { FamilyDelveryEventId, FamilyDeliveryEvents } from "../delivery-events/FamilyDeliveryEvents";
+import { Input } from "@angular/core";
+import { ApplicationSettings } from "../manage/ApplicationSettings";
 
-export class Families extends IdEntity<FamilyId> implements entityWithApi {
-  getDataApiSettings(): entityApiSettings {
-    return {
-      apiAccess: ApiAccess.loggedIn,
-      apiSettings: authInfo => {
-        return {
-          allowDelete: authInfo && authInfo.admin,
-          allowInsert: authInfo && authInfo.admin,
-          allowUpdate: authInfo ? true : false,
-          readonlyColumns: f => {
-            if (authInfo) {
-              if (authInfo.admin)
-                return [];
-              return f.__iterateColumns().filter(c => c != f.courierComments && c != f.deliverStatus);
+
+@EntityClass
+export class Families extends IdEntity<FamilyId>  {
+
+  constructor(private context: Context) {
+    super(new FamilyId(),
+      {
+        name: "Families",
+        allowApiRead: context.isLoggedIn(),
+        allowApiUpdate: context.isLoggedIn(),
+        allowApiDelete: context.isAdmin(),
+        allowApiInsert: context.isAdmin(),
+        apiDataFilter: () => {
+          if (!context.isAdmin())
+            return this.courier.isEqualTo(context.info.helperId);
+        },
+        onSavingRow: async () => {
+
+          if (this.context.onServer) {
+            if (this.fixedCourier.value && !this.courier.value && this.deliverStatus.listValue == DeliveryStatus.ReadyForDelivery) {
+              this.courier.value = this.fixedCourier.value;
             }
-          },
-          //הסרתי כדי להציג במסך משלח
-          //excludeColumns: f => {
-          //  return f.excludeColumns(authInfo);
-          //},
-          onSavingRow: async family => {
-            await family.doSaveStuff(authInfo);
-          },
-          get: {
-            where: f => {
-              if (authInfo && !authInfo.admin)
-                return f.courier.isEqualTo(authInfo.helperId);
-              return undefined;
+            if (this.address.value != this.address.originalValue || !this.getGeocodeInformation().ok()) {
+              let geo = await GetGeoInformation(this.address.value);
+              this.addressApiResult.value = geo.saveToString();
+              this.city.value = '';
+              if (geo.ok()) {
+                this.city.value = geo.getCity();
+              }
+              this.addressOk.value = !geo.partialMatch();
+              this.addressLongitude.value = geo.location().lng;
+              this.addressLatitude.value = geo.location().lat;
+
+            }
+            if (this.isNew()) {
+              this.createDate.dateValue = new Date();
+              this.createUser.value = context.info.helperId;
+            }
+            let logChanged = (col: Column<any>, dateCol: DateTimeColumn, user: HelperId, wasChanged: (() => void)) => {
+              if (col.value != col.originalValue) {
+                dateCol.dateValue = new Date();
+                user.value = context.info.helperId;
+                wasChanged();
+              }
+            }
+            if (!this.disableChangeLogging) {
+              logChanged(this.courier, this.courierAssingTime, this.courierAssignUser, async () => Families.SendMessageToBrowsers(Families.GetUpdateMessage(this, 2, await this.courier.getTheName())));//should be after succesfull save
+              logChanged(this.callStatus, this.callTime, this.callHelper, () => { });
+              logChanged(this.deliverStatus, this.deliveryStatusDate, this.deliveryStatusUser, async () => Families.SendMessageToBrowsers(Families.GetUpdateMessage(this, 1, await this.courier.getTheName()))); //should be after succesfull save
             }
           }
-        } as DataApiSettings<this>;
+        }
 
-      }
-    };
+      });
+    this.initColumns();
+    if (!context.isAdmin())
+      this.__iterateColumns().forEach(c => c.readonly = c != this.courierComments && c != this.deliverStatus);
   }
+  disableChangeLogging = false;
 
 
   name = new StringColumn({
@@ -58,13 +83,14 @@ export class Families extends IdEntity<FamilyId> implements entityWithApi {
         this.name.error = 'השם קצר מידי';
     }
   });
-  idInExcel = new StringColumn('מזהה באקסל');
-  familyMembers = new NumberColumn('מספר נפשות');
+  tz = new StringColumn({ caption: 'מספר זהות', excludeFromApi: !this.context.isAdmin() });
+  familyMembers = new NumberColumn({ excludeFromApi: !this.context.isAdmin(), caption: 'מספר נפשות' });
   language = new LanguageColumn();
-  basketType = new BasketId('סוג סל');
-  familySource = new FamilySourceId('גורם מפנה');
-  special = new YesNoColumn('שיוך מיוחד');
-  internalComment = new StringColumn('הערה פנימית - לא תופיע למשנע');
+  basketType = new BasketId(this.context, 'סוג סל');
+  familySource = new FamilySourceId(this.context, { excludeFromApi: !this.context.isAdmin(), caption: 'גורם מפנה' });
+  special = new YesNoColumn({ excludeFromApi: !this.context.isAdmin(), caption: 'שיוך מיוחד' });
+  iDinExcel = new StringColumn({ excludeFromApi: !this.context.isAdmin(), caption: 'מזהה באקסל' });
+  internalComment = new StringColumn({ excludeFromApi: !this.context.isAdmin(), caption: 'הערה פנימית - לא תופיע למשנע' });
 
 
   address = new StringColumn("כתובת");
@@ -75,37 +101,124 @@ export class Families extends IdEntity<FamilyId> implements entityWithApi {
   addressApiResult = new StringColumn();
   city = new StringColumn({ caption: "עיר כפי שגוגל הבין", readonly: true });
 
-  phone1 = new StringColumn({ caption: "טלפון 1", inputType: 'tel', dbName: 'phone' });
+  phone1 = new PhoneColumn({ caption: "טלפון 1", inputType: 'tel', dbName: 'phone' });
   phone1Description = new StringColumn('תאור טלפון 1');
-  phone2 = new StringColumn({ caption: "טלפון 2", inputType: 'tel' });
+  phone2 = new PhoneColumn({ caption: "טלפון 2", inputType: 'tel' });
   phone2Description = new StringColumn('תאור טלפון 2');
 
 
 
-  callStatus = new CallStatusColumn('סטטוס שיחה');
-  callTime = new changeDate('מועד שיחה');
-  callHelper = new HelperIdReadonly('מי ביצעה את השיחה');
-  callComments = new StringColumn('הערות שיחה');
+  callStatus = new CallStatusColumn({ excludeFromApi: !this.context.isAdmin(), caption: 'סטטוס שיחה' });
+  callTime = new changeDate({ excludeFromApi: !this.context.isAdmin(), caption: 'מועד שיחה' });
+  callHelper = new HelperIdReadonly(this.context, { excludeFromApi: !this.context.isAdmin(), caption: 'מי ביצעה את השיחה' });
+  callComments = new StringColumn({ excludeFromApi: !this.context.isAdmin(), caption: 'הערות שיחה' });
 
 
-  courier = new HelperId("משנע");
-  courierAssignUser = new HelperIdReadonly('מי שייכה למשנע');
+  courier = new HelperId(this.context, "משנע באירוע");
+  fixedCourier = new HelperId(this.context, "משנע קבוע");
+  courierAssignUser = new HelperIdReadonly(this.context, 'מי שייכה למשנע');
+
   courierAssignUserName = new StringColumn({
     caption: 'שם שיוך למשנע',
-    virtualData: async () => (await this.lookupAsync(new Helpers(), this.courierAssignUser)).name.value
+    virtualData: async () => (await this.context.for(Helpers).lookupAsync(this.courierAssignUser)).name.value
   });
-  courierAssignUserPhone = new StringColumn({
-    caption: 'שם שיוך למשנע',
-    virtualData: async () => (await this.lookupAsync(new Helpers(), this.courierAssignUser)).phone.value
+  courierAssignUserPhone = new PhoneColumn({
+    caption: 'טלפון שיוך למשנע',
+    virtualData: async () => (await this.context.for(Helpers).lookupAsync(this.courierAssignUser)).phone.value
   });
+
+  courierHelpName() {
+    if (ApplicationSettings.get(this.context).helpText.value)
+      return ApplicationSettings.get(this.context).helpText.value;
+    return this.courierAssignUser.displayValue;
+  }
+  courierHelpPhone() {
+    if (ApplicationSettings.get(this.context).helpText.value)
+    return ApplicationSettings.get(this.context).helpPhone.displayValue;
+  return this.courierAssignUserPhone.displayValue;
+  }
+
   courierAssingTime = new changeDate('מועד שיוך למשנע');
 
 
   deliverStatus = new DeliveryStatusColumn('סטטוס שינוע');
   deliveryStatusDate = new changeDate('מועד סטטוס שינוע');
-  deliveryStatusUser = new HelperIdReadonly('מי עדכן את סטטוס המשלוח');
+  deliveryStatusUser = new HelperIdReadonly(this.context, 'מי עדכן את סטטוס המשלוח');
   routeOrder = new NumberColumn();
   courierComments = new StringColumn('הערות מסירה');
+
+  addressLongitude = new NumberColumn({ decimalDigits: 8 });
+  addressLatitude = new NumberColumn({ decimalDigits: 8 });
+  addressOk = new BoolColumn({ caption: 'כתובת תקינה', readonly: true });
+
+  readyFilter(city?: string, language?: number) {
+    let where = this.deliverStatus.isEqualTo(DeliveryStatus.ReadyForDelivery.id).and(
+      this.courier.isEqualTo(''));
+    if (language > -1)
+      where = where.and(this.language.isEqualTo(language));
+    if (city) {
+      where = where.and(this.city.isEqualTo(city));
+    }
+    return where;
+  }
+  private dbNameFromLastDelivery(col: (fde: FamilyDeliveryEvents) => Column<any>, alias: string) {
+
+    let de = new DeliveryEvents(this.context);
+    let fde = new FamilyDeliveryEvents(this.context);
+    let sql = new SqlBuilder();
+    return sql.columnInnerSelect(this, {
+      select: () => [sql.columnWithAlias(col(fde), alias)],
+      from: de,
+      outerJoin: () => [{ to: fde, on: () => [sql.eq(fde.deliveryEvent, de.id)] }],
+      where: () => [sql.eq(fde.family, this.id),
+      sql.ne(de.isActiveEvent, true),
+      sql.not(sql.in(fde.deliverStatus, DeliveryStatus.NotInEvent.id)),
+      sql.ne(fde.courier, "''")
+      ],
+      orderBy: [{ column: de.deliveryDate, descending: true }]
+    });
+  }
+
+  previousDeliveryStatus = new DeliveryStatusColumn({
+    caption: 'סטטוס שינוע קודם',
+    dbReadOnly: true,
+    dbName: () => {
+      return this.dbNameFromLastDelivery(fde => fde.deliverStatus, "prevStatus");
+    }
+  });
+  previousDeliveryComment = new StringColumn({
+    caption: 'הערת שינוע קודם',
+    dbReadOnly: true,
+    dbName: () => {
+      return this.dbNameFromLastDelivery(fde => fde.courierComments, "prevComment");
+    }
+  });
+  previousCourier = new HelperIdReadonly(this.context, {
+    caption: 'משנע  קודם',
+    dbReadOnly: true,
+    dbName: () => {
+      return this.dbNameFromLastDelivery(fde => fde.courier, "prevCourier");
+    }
+  });
+  courierBeenHereBefore() {
+    return this.previousCourier.value == this.courier.value;
+  }
+  getPreviousDeliveryColumn() {
+    return {
+      caption: 'שינוע קודם',
+      getValue: f => {
+        let r = f.previousDeliveryStatus.displayValue;
+        if (f.previousDeliveryComment.value) {
+          r += ': ' + f.previousDeliveryComment.value
+        }
+        return r;
+      },
+      cssClass: f => f.previousDeliveryStatus.getCss()
+
+
+    } as ColumnSetting<Families>;
+  }
+
   addressByGoogle() {
     let r: ColumnSetting<Families> = {
       caption: 'כתובת כפי שגוגל הבין',
@@ -145,19 +258,18 @@ export class Families extends IdEntity<FamilyId> implements entityWithApi {
       case DeliveryStatus.FailedBadAddress:
       case DeliveryStatus.FailedNotHome:
       case DeliveryStatus.FailedOther:
-        
-        return this.deliverStatus.displayValue ;
+
+        return this.deliverStatus.displayValue;
 
     }
     return this.deliverStatus.displayValue;
   }
 
-
-  createDate = new changeDate('מועד הוספה');
-  createUser = new HelperIdReadonly('משתמש מוסיף');
+  createDate = new changeDate({ excludeFromApi: !this.context.isAdmin(), caption: 'מועד הוספה' });
+  createUser = new HelperIdReadonly(this.context, { excludeFromApi: !this.context.isAdmin(), caption: 'משתמש מוסיף' });
 
   excludeColumns(info: myAuthInfo) {
-    if (info && info.admin)
+    if (info && info.deliveryAdmin)
       return [];
     return [this.internalComment, this.callComments, this.callHelper, this.callStatus, this.callTime, this.createDate, this.createUser, this.familySource, this.familyMembers, this.special];
   }
@@ -182,39 +294,7 @@ export class Families extends IdEntity<FamilyId> implements entityWithApi {
     this._lastString = this.addressApiResult.value;
     return this._lastGeo = GeocodeInformation.fromString(this.addressApiResult.value);
   }
-  constructor(source?: DataProviderFactory) {
-    super(new FamilyId(), () => new Families(source), source ? source : evilStatics.dataSource, "Families");
-    this.initColumns();
-  }
-  async doSave(authInfo: myAuthInfo) {
-    await this.doSaveStuff(authInfo);
-    await this.save();
-  }
-  async doSaveStuff(authInfo: myAuthInfo) {
-    if (this.address.value != this.address.originalValue || !this.getGeocodeInformation().ok()) {
-      let geo = await GetGeoInformation(this.address.value);
-      this.addressApiResult.value = geo.saveToString();
-      this.city.value = '';
-      if (geo.ok()) {
-        this.city.value = geo.getCity();
-      }
-    }
-    let logChanged = (col: Column<any>, dateCol: DateTimeColumn, user: HelperId, wasChanged: (() => void)) => {
-      if (col.value != col.originalValue) {
-        dateCol.dateValue = new Date();
-        user.value = authInfo.helperId;
-        wasChanged();
-      }
-    }
-    if (this.isNew()) {
-      this.createDate.dateValue = new Date();
-      this.createUser.value = authInfo.helperId;
-    }
 
-    logChanged(this.courier, this.courierAssingTime, this.courierAssignUser, async () => Families.SendMessageToBrowsers(Families.GetUpdateMessage(this, 2, await this.courier.getTheName())));//should be after succesfull save
-    logChanged(this.callStatus, this.callTime, this.callHelper, () => { });
-    logChanged(this.deliverStatus, this.deliveryStatusDate, this.deliveryStatusUser, async () => Families.SendMessageToBrowsers(Families.GetUpdateMessage(this, 1, await this.courier.getTheName()))); //should be after succesfull save
-  }
   static SendMessageToBrowsers = (s: string) => { };
   static GetUpdateMessage(n: FamilyUpdateInfo, updateType: number, courierName: string) {
     switch (updateType) {
@@ -245,12 +325,6 @@ export class FamilyId extends Id { }
 
 
 
-
-
-
-
-
-
 export interface FamilyUpdateInfo {
   name: StringColumn,
   courier: HelperId,
@@ -258,4 +332,45 @@ export interface FamilyUpdateInfo {
   courierAssingTime: changeDate,
   deliveryStatusDate: changeDate,
   courierComments: StringColumn
-} 
+}
+
+export function parseAddress(s: string) {
+  let r = {
+
+  } as parseAddressResult;
+
+
+  let extractSomething = (what: string) => {
+    let i = s.indexOf(what);
+    if (i >= 0) {
+      let value = '';
+      let index = 0;
+      for (index = i + what.length; index < s.length; index++) {
+        const element = s[index];
+        if (element != ' ') {
+          value += element;
+        }
+        else if (value) {
+
+          break;
+        }
+      }
+      let after = s.substring(index + 1, 1000);
+      s = s.substring(0, i) + after;
+      return value.trim();
+    }
+  }
+  r.dira = extractSomething('דירה');
+  r.floor = extractSomething('קומה');
+  r.knisa = extractSomething('כניסה');
+
+
+  r.address = s.trim();
+  return r;
+}
+export interface parseAddressResult {
+  address: string;
+  dira?: string;
+  floor?: string;
+  knisa?: string;
+}

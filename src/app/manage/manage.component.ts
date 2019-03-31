@@ -1,15 +1,14 @@
 import { Component, OnInit } from '@angular/core';
-
 import { ApplicationImages } from "./ApplicationImages";
 import { FamilySources } from "../families/FamilySources";
 import { BasketType } from "../families/BasketType";
-import { GridSettings } from 'radweb';
-import { DialogService } from '../select-popup/dialog';
-import { AuthService } from '../auth/auth-service';
+import { SelectService } from '../select-popup/select-service';
 import { SendSmsAction } from '../asign-family/send-sms-action';
 import { ApplicationSettings } from './ApplicationSettings';
 import { Route } from '@angular/router';
-import { AdminGuard } from '../auth/auth-guard';
+import { AnyAdmin } from '../auth/auth-guard';
+import { Context } from '../shared/context';
+import { DialogService } from '../select-popup/dialog';
 
 @Component({
   selector: 'app-manage',
@@ -20,10 +19,11 @@ export class ManageComponent implements OnInit {
   static route: Route = {
     path: 'manage',
     component: ManageComponent,
-    data: { name: 'הגדרות מערכת' }, canActivate: [AdminGuard]
+    data: { name: 'הגדרות מערכת' }, canActivate: [AnyAdmin]
   }
+  constructor(private dialog: DialogService, private context: Context) { }
 
-  basketType = new GridSettings(new BasketType(), {
+  basketType = this.context.for(BasketType).gridSettings({
     columnSettings: x => [
       x.name
     ],
@@ -32,7 +32,7 @@ export class ManageComponent implements OnInit {
     allowDelete: true,
     confirmDelete: (h, yes) => this.dialog.confirmDelete(h.name.value, yes)
   });
-  sources = new GridSettings(new FamilySources(), {
+  sources = this.context.for(FamilySources).gridSettings({
     columnSettings: s => [
       s.name,
       s.phone,
@@ -40,28 +40,46 @@ export class ManageComponent implements OnInit {
     ], allowUpdate: true,
     allowInsert: true,
     allowDelete: true,
+    get: {
+      limit: 25,
+      orderBy: f => [f.name]
+    },
     confirmDelete: (h, yes) => this.dialog.confirmDelete(h.name.value, yes)
   });
-  settings = new GridSettings(new ApplicationSettings(), {
+  settings = this.context.for(ApplicationSettings).gridSettings({
     numOfColumnsInGrid: 0,
     allowUpdate: true,
     columnSettings: s => [
       s.organisationName,
-      s.logoUrl,
       s.address,
       {
         caption: 'כתובת כפי שגוגל הבין',
         getValue: s => s.getGeocodeInformation().getAddress()
-      }
+      },
+      s.logoUrl,
+      s.commentForSuccessDelivery,
+      s.commentForProblem,
+      s.helpText,
+      s.helpPhone,
+      {
+        caption:'',
+        getValue: s => {
+            if (!s.helpText.value){
+              return 'מכיוון שלא הוגדר שם בשדה '+s.helpText.caption+', למשנע יוצג השם של מי ששייך אותו והטלפון שלו ';
+            }
+            return '';
+        }
+      },
+      s.messageForDoneDelivery
 
 
     ]
 
   });
   testSms() {
-    return SendSmsAction.getMessage(this.settings.currentRow.smsText.value, this.settings.currentRow.organisationName.value, 'ישראל ישראלי', this.auth.auth.info.name, window.location.origin + '/x/zxcvdf');
+    return SendSmsAction.getMessage(this.settings.currentRow.smsText.value, this.settings.currentRow.organisationName.value, 'ישראל ישראלי', this.context.info.name, window.location.origin + '/x/zxcvdf');
   }
-  images = new GridSettings(new ApplicationImages(), {
+  images = this.context.for(ApplicationImages).gridSettings({
     numOfColumnsInGrid: 0,
     allowUpdate: true,
     columnSettings: i => [
@@ -70,7 +88,6 @@ export class ManageComponent implements OnInit {
 
     ]
   });
-  constructor(private dialog: DialogService, private auth: AuthService) { }
 
   ngOnInit() {
     this.settings.getRecords();

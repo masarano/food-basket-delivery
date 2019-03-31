@@ -121,16 +121,12 @@ th {
 @media (min-width: 768px)
 {
     .col-sm-1, .col-sm-10, .col-sm-11, .col-sm-12, .col-sm-2, .col-sm-3, .col-sm-4, .col-sm-5, .col-sm-6, .col-sm-7, .col-sm-8, .col-sm-9 {
-    float: right;
+    float: right !important;
+    
     }
 }
 
-  .glyphicon-chevron-left:before {
-      content: "\e080";
-}
-.glyphicon-chevron-right:before {
-    content: "\e079";
-  }
+  
 //end rtl stuff
   
 .hide{
@@ -170,13 +166,14 @@ th {
       }
   }
  
+
   .deliveredOk{
       background-color: #dff0d8 !important;
   }
   .deliveredOk>td{
     background-color: #dff0d8 !important;
 }
-.deliveredProblem>td{
+.deliveredProblem{
     background-color: #f2dede !important;
 }
 .addressProblem{
@@ -196,3 +193,33 @@ th {
   .thin-dialog-container{
       padding:10px;
   }
+
+//fix stupid ios bug with texts
+  input,text-area{
+    transform:translate3d(0px,0px,0px);
+  }
+  .mat-expansion-panel-header{
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+  .mat-expansion-panel-body {
+    padding:0 8px 16px !important;
+  }
+
+  .wideList{
+    
+    .mat-list-item-content{
+    
+      padding:0px!important;
+    }
+  }
+  .top-bar{
+    display:flex;
+    justify-content: space-between;
+}
+.family-title{
+  display:flex;
+  justify-content: space-between;
+  width:100%;
+  margin-left:10px;
+}

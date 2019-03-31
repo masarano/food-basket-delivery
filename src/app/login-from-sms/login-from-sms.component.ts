@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router, Route } from '@angular/router';
-import { LoginFromSmsAction } from './login-from-sms-action';
+
 import { AuthService } from '../auth/auth-service';
 
 @Component({
@@ -23,7 +23,7 @@ export class LoginFromSmsComponent implements OnInit {
     this.route.paramMap.subscribe(async x => {
 
       var id = x.get('id');
-      console.log(id);
+      
 
       this.authServer.loginFromSms(id);
 

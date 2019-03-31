@@ -5,6 +5,7 @@ import { Helpers } from '../helpers/helpers';
 import { SelectService } from '../select-popup/select-service';
 import { BasketType } from '../families/BasketType';
 import { FamilySources } from '../families/FamilySources';
+import { Context } from '../shared/context';
 
 @Component({
   selector: 'app-update-family',
@@ -13,7 +14,7 @@ import { FamilySources } from '../families/FamilySources';
 })
 export class UpdateFamilyComponent implements OnInit {
 
-  constructor(private selectService: SelectService) { }
+  constructor(private selectService: SelectService, private context: Context) { }
   @Input() families: GridSettings<Families>;
   familiesInfo: DataAreaSettings<Families>;
   familiesAddress: DataAreaSettings<Families>;
@@ -31,16 +32,11 @@ export class UpdateFamilyComponent implements OnInit {
             items: families.language.getOptions()
           }
         },
-        {
-          column: families.basketType,
-          dropDown: { source: new BasketType() }
-        },
-        {
-          column: families.familySource,
-          dropDown: { source: new FamilySources() }
-        },
+        families.basketType.getColumn(),
+        families.familySource.getColumn(),
         families.internalComment,
-        families.idInExcel,
+        families.iDinExcel,
+        families.tz,
         families.deliveryComments,
         families.special.getColumn(),
         families.createUser,
@@ -70,25 +66,14 @@ export class UpdateFamilyComponent implements OnInit {
         families.phone2Description
       ]
     });
-    this.callInfo = this.families.addArea({
-      columnSettings: families => [
-        {
-          column: families.callStatus,
-          dropDown: {
-            items: families.callStatus.getOptions()
-          }
-        },
-        families.callHelper,
-        families.callTime,
-        families.callComments,
-      ]
-    })
+
     this.deliverInfo = this.families.addArea({
       columnSettings: families => [
+        families.fixedCourier.getColumn(this.selectService),
         families.courier.getColumn(this.selectService),
         {
           caption: 'טלפון משנע',
-          getValue: f => f.lookup(new Helpers(), f.courier).phone.value
+          getValue: f => f.courier.getPhone()
         },
         families.courierAssignUser,
         families.courierAssingTime,
@@ -96,6 +81,7 @@ export class UpdateFamilyComponent implements OnInit {
         families.deliveryStatusUser,
         families.deliveryStatusDate,
         families.courierComments,
+        families.getPreviousDeliveryColumn()
       ]
     });
   }

@@ -1,12 +1,14 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { NewsUpdate } from "./NewsUpdate";
 import { DeliveryStatus } from "../families/DeliveryStatus";
-import { StringColumn } from 'radweb';
+import { Context } from '../shared/context';
 import { DialogService } from '../select-popup/dialog';
-import { AdminGuard } from '../auth/auth-guard';
+import { HolidayDeliveryAdmin } from '../auth/auth-guard';
 import { Route } from '@angular/router';
 import { SelectService } from '../select-popup/select-service';
 import { Families } from '../families/families';
+import { FilterBase } from 'radweb';
+import { BusyService } from '../select-popup/busy-service';
 
 @Component({
   selector: 'app-news',
@@ -15,11 +17,25 @@ import { Families } from '../families/families';
 })
 export class NewsComponent implements OnInit, OnDestroy {
   static route: Route = {
-    path: 'news', component: NewsComponent, canActivate: [AdminGuard], data: { name: 'חדשות' }
+    path: 'news', component: NewsComponent, canActivate: [HolidayDeliveryAdmin], data: { name: 'חדשות' }
   };
+  filters: NewsFilter[] = [{
+    name: 'כל החדשות'
+  }, {
+    name: 'בעיות',
+    where: f => f.deliverStatus.isProblem()
+  }, {
+    name: 'הערות',
+    where: f => f.courierComments.IsDifferentFrom('')
+  }];
+  currentFilter: NewsFilter = this.filters[0];
+  filterChange() {
+   
+    this.refresh();
+  }
   onDestroy = () => { };
-  constructor(dialog: DialogService, private selectService: SelectService) {
-    let y = dialog.newsUpdate.subscribe(() => {
+  constructor(dialog: DialogService, private selectService: SelectService, private context: Context, private busy: BusyService) {
+    let y = dialog.refreshStatusStats.subscribe(() => {
       this.refresh();
     });
     this.onDestroy = () => {
@@ -28,9 +44,9 @@ export class NewsComponent implements OnInit, OnDestroy {
 
   }
   async updateFamily(n: NewsUpdate) {
-    let fam = new Families();
-    let f = await fam.source.find({ where: fam.id.isEqualTo(n.id) });
-    this.selectService.updateFamiliy({ f: f[0] });
+
+    let f = await this.context.for(Families).findFirst(fam => fam.id.isEqualTo(n.id));
+    this.selectService.updateFamiliy({ f: f });
   }
   ngOnDestroy(): void {
     this.onDestroy();
@@ -39,10 +55,12 @@ export class NewsComponent implements OnInit, OnDestroy {
   async ngOnInit() {
     this.refresh();
   }
-  newsEntity = new NewsUpdate();
+
   async refresh() {
 
-    this.news = await this.newsEntity.source.find({ orderBy: [{ column: this.newsEntity.updateTime, descending: true }], limit: 50 });
+    this.busy.donotWait(async () => {
+      this.news = await this.context.for(NewsUpdate).find({ where: this.currentFilter.where, orderBy: n => [{ column: n.updateTime, descending: true }], limit: 50 });
+    });
   }
   icon(n: NewsUpdate) {
 
@@ -71,4 +89,8 @@ export class NewsComponent implements OnInit, OnDestroy {
   }
 
 
+}
+interface NewsFilter {
+  name: string;
+  where?: (rowType: NewsUpdate) => FilterBase;
 }
