@@ -43,7 +43,6 @@ export async function serverInit() {
         ActualSQLServerDataProvider.LogToConsole = true;
         ActualDirectSQL.log = true;
     }
-    let dbUrl = process.env.DATABASE_URL;
     if (process.env.HEROKU_POSTGRESQL_COBALT_URL)
         dbUrl = process.env.HEROKU_POSTGRESQL_COBALT_URL;
     const pool = new Pool({
