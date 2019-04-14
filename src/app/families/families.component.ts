@@ -1,5 +1,5 @@
 import { Component, OnInit, ViewChild, Input } from '@angular/core';
-import { ColumnHashSet, AndFilter, ColumnSetting } from 'radweb';
+import { ColumnHashSet, AndFilter, ColumnSetting, DateColumn } from 'radweb';
 import { FamilyDeliveryEventsView } from "./FamilyDeliveryEventsView";
 import { Families } from './families';
 import { DeliveryStatus } from "./DeliveryStatus";
@@ -21,7 +21,7 @@ import * as chart from 'chart.js';
 import { Stats, FaimilyStatistics, colors } from './stats-action';
 import { MatTabGroup } from '@angular/material';
 import { reuseComponentOnNavigationAndCallMeWhenNavigatingToIt, leaveComponent } from '../custom-reuse-controller-router-strategy';
-import { HasAsyncGetTheValue } from '../model-shared/types';
+import { HasAsyncGetTheValue, DateTimeColumn } from '../model-shared/types';
 import { Helpers } from '../helpers/helpers';
 import { Route } from '@angular/router';
 import { HolidayDeliveryAdmin } from '../auth/auth-guard';
@@ -84,17 +84,20 @@ export class FamiliesComponent implements OnInit {
     legend: {
       position: 'right',
       onClick: (event: MouseEvent, legendItem: any) => {
-        this.currentStatFilter = this.pieChartStatObjects[legendItem.index];
-        this.families.getRecords();
+        this.setCurrentStat(this.pieChartStatObjects[legendItem.index]);
         return false;
       }
     },
   };
   public chartClicked(e: any): void {
     if (e.active && e.active.length > 0) {
-      this.currentStatFilter = this.pieChartStatObjects[e.active[0]._index];
-      this.families.getRecords();
+      this.setCurrentStat(this.pieChartStatObjects[e.active[0]._index]);
+
     }
+  }
+  setCurrentStat(s: FaimilyStatistics) {
+    this.currentStatFilter = s;
+    this.families.getRecords();
   }
   searchString = '';
   async doSearch() {
@@ -113,43 +116,107 @@ export class FamiliesComponent implements OnInit {
 
 
     let wb = XLSX.utils.book_new();
-    let data = [];
-    let title = [];
-    let doneTitle = false;
+    wb.Workbook = { Views: [{ RTL: true }] };
+    let ws = {
 
-    await foreachSync(await this.context.for(Families).find({ limit: 5000, orderBy: f => [f.name] })
-      , async  f => {
-        let row = [];
+    } as XLSX.WorkSheet;
+    var dc = new DateTimeColumn();
+    dc.dateValue = new Date();
+    ws["A1"] = {
+      v: dc.displayValue,
+      t: "d",
+      w: "dd/mm/yyyy HH:MM"
 
-        await foreachSync(f.__iterateColumns(), async c => {
-          try {
-            if (!doneTitle) {
-              title.push(c.caption);
+    } as XLSX.CellObject;
+    ws["A2"] = {
+      f: "year(A1)"
+
+    } as XLSX.CellObject;
+    ws["!cols"] = [];
+
+
+
+
+    let x = this.families.page;
+    let rowNum = 2;
+    let maxChar = 'A';
+
+
+    this.families.page = 1;
+    await this.families.getRecords();
+    while (this.families.items.length > 0) {
+      await foreachSync(this.families.items
+        , async  f => {
+          let colPrefix = '';
+          let colName = 'A';
+          let colIndex = 0;
+
+          let addColumn = (caption: string, v: string, t: XLSX.ExcelDataType, hidden?: boolean) => {
+
+            if (rowNum == 2) {
+              ws[colPrefix + colName + "1"] = { v: caption };
+              ws["!cols"].push({
+                wch: caption.length,
+                hidden: hidden
+              });
             }
-            let v = c.displayValue;
-            if (v == undefined)
-              v = '';
 
-            let getv: HasAsyncGetTheValue = <any>c as HasAsyncGetTheValue;
-            if (getv && getv.getTheValue) {
-              v = await getv.getTheValue();
+            ws[colPrefix + colName + (rowNum.toString())] = {
+              v: v, t: t
+            };
+            maxChar = colPrefix + colName;
+            {
+              let i = colName.charCodeAt(0);
+              i++;
+              colName = String.fromCharCode(i);
+              if (colName > 'Z') {
+                colName = 'A';
+                colPrefix = 'A';
+              }
             }
+            let len = v.length;
+            let col = ws["!cols"][colIndex++];
+            if (len > col.wch) {
+              col.wch = len;
+            }
+          };
 
-            v = v.toString();
-            row.push(v);
-          } catch (err) {
-            row.push(err);
-            console.error(err, c.jsonName, f.__toPojo(new ColumnHashSet()));
-          }
+          await foreachSync(f.__iterateColumns(), async c => {
+            try {
+
+              let v = c.displayValue;
+              if (v == undefined)
+                v = '';
+              let getv: HasAsyncGetTheValue = <any>c as HasAsyncGetTheValue;
+              if (getv && getv.getTheValue) {
+                v = await getv.getTheValue();
+              }
+              
+              if (c instanceof DateTimeColumn){
+                addColumn('תאריך '+c.caption,c.dateValue? c.getStringForInputDate():undefined , "d", false);
+                addColumn('שעת '+c.caption,c.dateValue? c.dateValue.getHours().toString():undefined , "n", false);
+                addColumn('מלא '+c.caption,c.value , "s", true);
+              }
+              else
+                addColumn(c.caption, v.toString(), "s", c == f.id || c == f.addressApiResult)
+
+
+            } catch (err) {
+
+              console.error(err, c.jsonName, f.__toPojo(new ColumnHashSet()));
+            }
+          });
+          rowNum++;
+
         });
-        if (!doneTitle) {
-          data.push(title);
-          doneTitle = true;
-        }
-        data.push(row);
+      await this.families.nextPage();
+    }
+    this.families.page = x;
+    this.families.getRecords();
+    ws["!ref"] = "A1:" + maxChar + rowNum;
+    ws["!autofilter"] = { ref: ws["!ref"] };
 
-      });
-    let ws = XLSX.utils.aoa_to_sheet(data);
+
     XLSX.utils.book_append_sheet(wb, ws, 'test');
     XLSX.writeFile(wb, 'משפחות.xlsx');
     return;
@@ -167,7 +234,7 @@ export class FamiliesComponent implements OnInit {
         f.basketType.value = '';
         f.language.listValue = Language.Hebrew;
         f.deliverStatus.listValue = DeliveryStatus.ReadyForDelivery;
-        f.callStatus.listValue = CallStatus.NotYet;
+        //f.callStatus.listValue = CallStatus.NotYet;
         f.special.listValue = YesNo.No;
       } else {
 
@@ -222,7 +289,7 @@ export class FamiliesComponent implements OnInit {
           column: families.address,
           width: '250',
           cssClass: f => {
-            if (f.getGeocodeInformation().partialMatch())
+            if (!f.addressOk.value)
               return 'addressProblem';
             return '';
           }
@@ -231,6 +298,11 @@ export class FamiliesComponent implements OnInit {
         ,
         {
           caption: 'שינוע',
+          column: families.deliverStatus,
+          readonly: true,
+          dropDown: {
+            items: families.deliverStatus.getOptions()
+          },
           getValue: f => f.getDeliveryDescription(),
           width: '200'
         },
@@ -246,7 +318,7 @@ export class FamiliesComponent implements OnInit {
             items: families.language.getOptions()
           },
 
-        },families.familySource.getColumn(),
+        }, families.familySource.getColumn(),
         {
           column: families.internalComment,
           width: '300'
@@ -264,6 +336,10 @@ export class FamiliesComponent implements OnInit {
         this.addressCommentColumn = { column: families.addressComment },
         families.city,
         this.addressByGoogleColumn = families.addressByGoogle(),
+        {
+          caption: 'מה הבעיה של גוגל',
+          getValue: f => f.getGeocodeInformation().whyProblem()
+        },
         families.phone1,
         families.phone1Description,
         families.phone2,
@@ -326,7 +402,8 @@ export class FamiliesComponent implements OnInit {
     stats: [
       this.stats.ready,
       this.stats.special
-    ]
+    ],
+    moreStats: []
   };
   cityStats: statsOnTab = {
     name: 'נותרו לפי ערים',
@@ -334,7 +411,8 @@ export class FamiliesComponent implements OnInit {
     stats: [
       this.stats.ready,
       this.stats.special
-    ]
+    ],
+    moreStats: []
   };
   statTabs: statsOnTab[] = [
     {
@@ -347,7 +425,8 @@ export class FamiliesComponent implements OnInit {
         this.stats.delivered,
         this.stats.problem,
         this.stats.frozen
-      ]
+      ],
+      moreStats: []
     },
     this.cityStats,
     this.basketStats,
@@ -357,7 +436,8 @@ export class FamiliesComponent implements OnInit {
       rule: f => f.deliverStatus.IsDifferentFrom(DeliveryStatus.NotInEvent.id).and(f.courierComments.IsDifferentFrom('')),
       stats: [
         this.stats.deliveryComments
-      ]
+      ],
+      moreStats: []
     },
     {
       rule: f => undefined,
@@ -365,7 +445,8 @@ export class FamiliesComponent implements OnInit {
       stats: [
         this.stats.currentEvent,
         this.stats.notInEvent
-      ]
+      ],
+      moreStats: []
     }
   ]
   tabChanged() {
@@ -378,13 +459,14 @@ export class FamiliesComponent implements OnInit {
     this.families.getRecords();
 
   }
-
+  currentTabStats: statsOnTab = { name: '', stats: [], moreStats: [], rule: undefined };
   updateChart() {
     this.pieChartData = [];
     this.pieChartStatObjects = [];
     this.pieChartLabels.splice(0);
     this.colors[0].backgroundColor.splice(0);
-    let stats = this.statTabs[this.myTab.selectedIndex].stats;
+    this.currentTabStats = this.statTabs[this.myTab.selectedIndex];
+    let stats = this.currentTabStats.stats;
 
     stats.forEach(s => {
       if (s.value > 0) {
@@ -411,18 +493,53 @@ export class FamiliesComponent implements OnInit {
       this.busy.donotWait(async () => this.stats.getData().then(st => {
         this.basketStats.stats.splice(0);
         this.cityStats.stats.splice(0);
+        this.cityStats.moreStats.splice(0);
         st.baskets.forEach(b => {
           let fs = new FaimilyStatistics(b.name, f => f.deliverStatus.isEqualTo(DeliveryStatus.ReadyForDelivery.id).and(f.courier.isEqualTo('').and(f.basketType.isEqualTo(b.id))), undefined);
           fs.value = b.unassignedFamilies;
           this.basketStats.stats.push(fs);
 
         });
+        let i = 0;
+        let lastFs: FaimilyStatistics;
+        let firstCities = [];
         st.cities.forEach(b => {
           let fs = new FaimilyStatistics(b.name, f => f.deliverStatus.isEqualTo(DeliveryStatus.ReadyForDelivery.id).and(f.courier.isEqualTo('').and(f.city.isEqualTo(b.name))), undefined);
-          fs.value = b.count;
-          this.cityStats.stats.push(fs);
+          fs.value = +b.count;
+
+          i++;
+
+          if (i <= 6) {
+            this.cityStats.stats.push(fs);
+            firstCities.push(b.name);
+          }
+          if (i > 6) {
+            if (!lastFs) {
+              let x = this.cityStats.stats.pop();
+              firstCities.pop();
+              lastFs = new FaimilyStatistics('כל השאר', f => {
+                let r = f.readyFilter().and(f.city.IsDifferentFrom(firstCities[0]));
+                for (let index = 1; index < firstCities.length; index++) {
+                  r = r.and(f.city.IsDifferentFrom(firstCities[index]));
+                }
+                return r;
+
+              }, undefined);
+              this.cityStats.moreStats.push(x);
+              lastFs.value = x.value;
+              this.cityStats.stats.push(lastFs);
+            }
+
+          }
+          if (i > 6) {
+            lastFs.value += fs.value;
+            this.cityStats.moreStats.push(fs);
+          }
+
+
 
         });
+        this.cityStats.moreStats.sort((a, b) => a.name.localeCompare(b.name));
 
         this.updateChart();
       }));
@@ -459,12 +576,12 @@ export class FamiliesComponent implements OnInit {
 
   [reuseComponentOnNavigationAndCallMeWhenNavigatingToIt]() {
     this.suspend = false;
-    
+
     this.refresh();
   }
   suspend = false;
   [leaveComponent]() {
-    
+
     this.suspend = true;
   }
   refresh() {
@@ -483,5 +600,6 @@ export class FamiliesComponent implements OnInit {
 interface statsOnTab {
   name: string,
   stats: FaimilyStatistics[],
+  moreStats: FaimilyStatistics[],
   rule: (f: Families) => FilterBase
 }
