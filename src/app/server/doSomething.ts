@@ -26,7 +26,7 @@ export async function DoIt() {
         let name = (await ApplicationSettings.getAsync(context)).organisationName.value;
         console.log(name);
 
-        ImportFromExcel();
+        await ImportFromExcel();
 
         //     await ImportFromExcel();
     }
@@ -50,7 +50,7 @@ async function getGeolocationInfo() {
 }
 async function ImportFromExcel() {
 
-    let wb = XLSX.readFile("C:\\Users\\Yoni\\Downloads\\פסח 2.xls");
+    let wb = XLSX.readFile("C:\\temp\\Family-Crovit.xlsx");
     for (let sheetIndex = 0; sheetIndex < 1; sheetIndex++) {
         const element = wb.SheetNames[sheetIndex];
         let s = wb.Sheets[element];
@@ -62,11 +62,15 @@ async function ImportFromExcel() {
             try {
 
                 let get = x => {
-                    if (!r[x])
+                    let result = r[x];
+                    if (!result)
                         return '';
-                    return r[x];
+                    if (isString(result))
+                        result = result.trim();
+                    return result;
                 };
-                await readMerkazMazonFamily2(context, r, get, '4_5_2019 ' + element);
+                 //await readCrovitSingel(context, r, get, 'בודדים' + element);
+                await readCrovitFamilys(context, r, get, 'משפחות' + element);
 
             }
             catch (err) {
@@ -261,38 +265,33 @@ async function readMerkazMazonFamily(context: ServerContext, o: any, get: (key: 
 
 
 }
+async function readCrovitFamilys(context: ServerContext, o: any, get: (key: string) => string, sheetName: string) {
+    let idInExcel = get('זיהוי').toString().padStart(4, '0'); //sheetName + ' ' + o.__rowNum__.toString().padStart(3, '0');
 
-async function readMerkazMazonFamily2(context: ServerContext, o: any, get: (key: string) => string, sheetName: string) {
-    let idInExcel = sheetName + ' ' + o.__rowNum__.toString().padStart(3, '0');
-    let taz = get('ת"ז').trim();
-    let phone = get('טלפון').trim();
-    let phone2 = get('טלפון נייד').trim();
-    let name = get('איש קשר');
-    if (!taz && !phone && !phone2 && !name) {
-        console.error('אין תעודת זהות וטלפון - לא קולט', idInExcel, o);
+    let name = get('שם');
+    if (!idInExcel && !name) {
+        console.error('אין מזהה באקסאל ואין שם - לא קולט', idInExcel, o);
         return;
     }
-    let f = await context.for(Families).lookupAsync(f => {
-        if (taz)
-            return f.tz.isEqualTo(taz);
-        else if (phone)
-            return f.phone1.isEqualTo(phone);
-        else if (phone2)
-            return f.phone2.isEqualTo(phone2);
-        else
-            return f.name.isEqualTo(name);
+    let f =  context.for(Families).create();
+    let sal = +get('מספר נפשות');
+    let salName = '';
+    if (sal < 6)
+        salName ="משפחה קטנה";
+    else
+        salName ="משפחה גדולה"
 
-    });
-    let sal = get('ביקור בית').trim();
-    if (sal && sal.trim() == "כן" && (f.isNew() || f.deliverStatus.listValue == DeliveryStatus.ReadyForDelivery)) {
-        let bask = await context.for(BasketType).lookupAsync(b => b.name.isEqualTo('סל לקשיש'));
+    if (salName)
+    {
+        let bask = await context.for(BasketType).lookupAsync(b => b.name.isEqualTo(salName));
         if (bask.isNew()) {
-            bask.name.value = 'סל לקשיש';
+            bask.name.value = salName;
             await bask.save();
         }
         f.basketType.value = bask.id.value;
     }
-    let machlaka = get('מחלקה').trim();
+   
+    let machlaka = get('מקור');
     if (machlaka) {
         let fs = await context.for(FamilySources).lookupAsync(f => f.name.isEqualTo(machlaka));
         if (fs.isNew()) {
@@ -301,39 +300,100 @@ async function readMerkazMazonFamily2(context: ServerContext, o: any, get: (key:
         }
         f.familySource.value = fs.id.value;
     }
-    if (o.__rowNum__ > 183 && o.__rowNum__ < 187) {
-        debugger;
-    }
+   
 
     if (f.isNew()) {
-        let helperName = get('מתנדב קבוע').trim();
-        if (helperName) {
-            let h = await context.for(Helpers).lookupAsync(h => h.name.isEqualTo(helperName));
-            if (h.isNew()) {
-                f.internalComment.value = helperName;
-            }
-            else {
-                // f.courier.value = h.id.value;
-                f.fixedCourier.value = h.id.value;
-            }
-        }
-        f.phone1.value = get('טלפון');
-        f.phone2.value = get('טלפון נייד');
+       
+        f.phone1.value = get('טלפון 1');
+        f.phone1Description.value = get('הערה טלפון 1');
+        f.phone2.value = get('טלפון 2');
+        f.phone2Description.value=get('הערה טלפון 2');
         f.iDinExcel.value = idInExcel;
-        f.tz.value = taz;
-
         f.floor.value = get('קומה');
         f.appartment.value = get('דירה');
         let knisa = get('כניסה');
         if (knisa) {
             f.addressComment.value = 'כניסה ' + knisa;
         }
-        f.address.value = get('כתובת') + ' ' + get('בית') + ' ' + get('עיר');
+        f.address.value = get('רחוב') + ' ' + get('בית') + ' ' + get('עיר');
         f.name.value = name;
-        f.familyMembers.value = +get('מס נפשות');
+        f.familyMembers.value = +sal;
 
         f.deliveryComments.value = get('הערות');
-        await f.save();
+          await f.save();
+        console.log('Save ' + idInExcel);
+
+    }
+    else {
+        match++;
+        //    console.log('match ', o.__rowNum__, o);
+    }
+}
+
+async function readCrovitSingel(context: ServerContext, o: any, get: (key: string) => string, sheetName: string) {
+    let idInExcel = get('זיהוי').toString().padStart(3, '0'); //sheetName + ' ' + o.__rowNum__.toString().padStart(3, '0');
+
+    let name = get('שם');
+    if (!idInExcel && !name) {
+        console.error('אין מזהה באקסאל ואין שם - לא קולט', idInExcel, o);
+        return;
+    }
+    let f =  context.for(Families).create();
+    let sal = get('מספר נפשות').toString();
+    let salName = '';
+    switch (sal) {
+        case "1":
+            salName = "רגיל";
+            break;
+        case "2":
+            salName = "כפול";
+            break;
+        case "3":
+            salName = "משולש";
+            break;
+    }
+    if (salName)
+    {
+        let bask = await context.for(BasketType).lookupAsync(b => b.name.isEqualTo(salName));
+        if (bask.isNew()) {
+            bask.name.value = salName;
+            await bask.save();
+        }
+        f.basketType.value = bask.id.value;
+    }
+   
+    let machlaka = get('מקור');
+    if (machlaka) {
+        let fs = await context.for(FamilySources).lookupAsync(f => f.name.isEqualTo(machlaka));
+        if (fs.isNew()) {
+            fs.name.value = machlaka;
+            await fs.save();
+        }
+        f.familySource.value = fs.id.value;
+    }
+   
+
+    if (f.isNew()) {
+       
+        f.phone1.value = get('טלפון 1');
+        f.phone1Description.value = get('הערה טלפון 1');
+        f.phone2.value = get('טלפון 2');
+        f.phone2Description.value=get('הערה טלפון 2');
+        f.iDinExcel.value = idInExcel;
+        f.floor.value = get('קומה');
+        f.appartment.value = get('דירה');
+        let knisa = get('כניסה');
+        if (knisa) {
+            f.addressComment.value = 'כניסה ' + knisa;
+        }
+        f.address.value = get('רחוב') + ' ' + get('בית') + ' ' + get('עיר');
+        f.name.value = name;
+        f.familyMembers.value = +sal;
+
+        f.deliveryComments.value = get('הערות');
+          await f.save();
+        console.log('Save ' + idInExcel);
+
     }
     else {
         match++;
